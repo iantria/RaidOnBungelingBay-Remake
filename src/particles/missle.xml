@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<system additive="false" points="false">
+<emitter imageName="particles/inital-flash.tga" name="Initial Flash" renderType="inherit" useAdditive="true" useOriented="false">
+<spawnInterval enabled="true" max="3000.0" min="3000.0"/>
+<spawnCount enabled="true" max="1.0" min="1.0"/>
+<initialLife enabled="false" max="1000.0" min="1000.0"/>
+<initialSize enabled="false" max="10.0" min="10.0"/>
+<xOffset enabled="false" max="0.0" min="0.0"/>
+<yOffset enabled="false" max="0.0" min="0.0"/>
+<initialDistance enabled="false" max="0.0" min="0.0"/>
+<speed enabled="true" max="0.0" min="0.0"/>
+<length enabled="true" max="3000.0" min="3000.0"/>
+<emitCount enabled="false" max="1000.0" min="1000.0"/>
+<spread type="random" value="360.0"/>
+<angularOffset type="simple" value="0.0"/>
+<growthFactor type="simple" value="0.0"/>
+<gravityFactor type="simple" value="0.0"/>
+<windFactor type="simple" value="0.0"/>
+<startAlpha type="simple" value="255.0"/>
+<endAlpha type="simple" value="255.0"/>
+<alpha active="true" max="255" min="0" type="linear">
+<point x="0.0" y="0.0"/>
+<point x="0.05785124" y="255.0"/>
+<point x="0.12601626" y="78.23863"/>
+<point x="0.50406504" y="0.0"/>
+<point x="1.0" y="0.0"/>
+</alpha>
+<size active="true" max="500" min="0" type="linear">
+<point x="0.0" y="0.0"/>
+<point x="0.07317073" y="477.27274"/>
+<point x="1.0" y="147.72728"/>
+</size>
+<velocity active="false" max="255" min="0" type="linear">
+<point x="0.0" y="0.0"/>
+<point x="1.0" y="255.0"/>
+</velocity>
+<scaleY active="false" max="1" min="0" type="linear">
+<point x="0.0" y="0.0"/>
+<point x="1.0" y="1.0"/>
+</scaleY>
+<color>
+<step b="1.0" g="1.0" offset="0.0" r="1.0"/>
+<step b="1.0" g="1.0" offset="1.0" r="1.0"/>
+</color>
+</emitter>
+</system>

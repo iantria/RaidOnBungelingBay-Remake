@@ -1,0 +1,383 @@
+package ca.iantria.raid.modes;
+
+import org.newdawn.slick.AppletGameContainer;
+import org.newdawn.slick.Color;
+import org.newdawn.slick.GameContainer;
+import org.newdawn.slick.Graphics;
+import org.newdawn.slick.Input;
+import org.newdawn.slick.SlickException;
+import org.newdawn.slick.geom.Vector2f;
+import org.newdawn.slick.util.Log;
+
+import ca.iantria.raid.Main;
+import ca.iantria.raid.entity.AAGun;
+import ca.iantria.raid.entity.Carrier;
+import ca.iantria.raid.entity.EnemyBomber;
+import ca.iantria.raid.entity.EnemyFighter;
+import ca.iantria.raid.entity.EnemyPlane;
+import ca.iantria.raid.entity.EnemyShip;
+import ca.iantria.raid.entity.Factory;
+import ca.iantria.raid.entity.GameMap;
+import ca.iantria.raid.entity.Plane;
+import ca.iantria.raid.entity.Projectile;
+import ca.iantria.raid.entity.ScrollingCombatText;
+import ca.iantria.raid.entity.SecretBase;
+import ca.iantria.raid.interfaces.IFadeListener;
+import ca.iantria.raid.interfaces.IMenuListener;
+import ca.iantria.raid.interfaces.IMode;
+import ca.iantria.raid.util.Constants;
+import ca.iantria.raid.util.Menu;
+
+public class GameMode implements IMode, IFadeListener, IMenuListener {
+
+	public int missileIndex;
+	public int bulletIndex;
+    public Vector2f missleCenter;
+    public Vector2f bulletCenter;
+    
+	public Main main;
+	public GameContainer gc;
+	
+	public static final int STATE_FADE_IN = 0;
+	public static final int STATE_GAME = 1;
+	public static final int STATE_FADE_OUT = 2;
+	public static final int STATE_DONE = 3;
+	public int state = STATE_FADE_IN;
+	public int nextScreen = 0;
+	public Color trans = new Color(0f,0f,0f,0.5f);
+	
+	public int cruiseMissleDelayTimer = 0;
+	public boolean isReadyToFireCruiseMissle;
+    public int winDelayTime = 0;
+    public int FUEL_DURATION = Constants.FUEL_DURATION;
+    public int WIN_DELAY_DURATION = 6000;
+	
+	public Menu menu;
+	public boolean optionSelected;
+	public int selectedIndex;
+	public boolean showMenu = false;
+	private String[] options = new String[] { "Screen Mode", "Leave This Game", "Exit Game", "Resume Game" };
+	public float zoomScale;
+	
+	private void checkGameLogic(GameContainer gc2, int delta) {
+		main.statistics.gameTime += delta;
+	
+    	cruiseMissleDelayTimer = cruiseMissleDelayTimer + delta;
+    	if (getRemainingFactories() < 4 && cruiseMissleDelayTimer > Constants.ENEMY_CRUISE_MISSLE_FIRING_INTERVAL){
+    		isReadyToFireCruiseMissle = true;
+    		cruiseMissleDelayTimer = 0;
+    	}
+
+        if (getRemainingFactories() == 0){
+		    winDelayTime += delta;
+		    if (!main.youWin.playing()) main.youWin.play();
+	        if (winDelayTime >= WIN_DELAY_DURATION) {
+	            winDelayTime = 0;
+	            main.statistics.youWon = true;
+	            main.statistics.carrierSurvived = !main.carrier.isDestroyed && !main.carrier.isSinking;;
+	            main.drums.loop();
+    		    if (!main.carrier.isDestroyed()) main.statistics.score = main.statistics.score + Constants.SCORE_ENEMY_SHIP_NOT_COMPLETED;
+    		    if (!main.statistics.enemyShipWasCompleted) main.statistics.score = main.statistics.score + Constants.SCORE_CARRIER_ALIVE;
+    		    main.statistics.score = main.statistics.score + (Constants.SCORE_PER_PLANE_REMAINING * main.plane.livesCount);
+    		    if (!main.plane.isPlayer) main.requestMode(Modes.MAINMENU, gc);
+    		    else main.requestMode(Modes.OUTCOME, gc);
+			}
+        }
+	}
+
+	
+	public void updatePositionsAfterCrash() {
+		Vector2f old = new Vector2f(main.gameMap.position.copy());
+
+		float carrierY = main.carrier.position.y -main.gameMap.position.y;
+		main.plane.setRotation(0);
+        main.plane.setPosition(
+        		new Vector2f(
+        			Constants.WINDOW_WIDTH/2-main.planeImage.getWidth()/2*main.plane.scale, 
+        			Constants.WINDOW_HEIGHT/2-main.planeImage.getHeight()/2*main.plane.scale));
+        main.gameMap.setPosition(new Vector2f(Constants.WINDOW_WIDTH/2 - 400, -carrierY + 130)); 
+        main.carrier.setPosition(new Vector2f(main.plane.getPosition().x - 16, main.plane.getPosition().y - 230));
+        main.plane.reset();
+
+        if (old.x < (-main.MAP_WIDTH +  Constants.WINDOW_WIDTH/2)) old.x = old.x + main.MAP_WIDTH;
+        main.enemyShip.setPosition(new Vector2f((main.gameMap.position.x -old.x) + main.enemyShip.getPosition().x,
+        					 	   (main.gameMap.position.y -old.y)  + main.enemyShip.getPosition().y));
+        for (EnemyPlane p : main.enemyPlanes) {
+        	p.setPosition(
+        		new Vector2f((main.gameMap.position.x -old.x) + p.getPosition().x,
+        					 (main.gameMap.position.y -old.y)  + p.getPosition().y));
+        }
+        
+        for (Projectile p : main.projectiles) {
+        	p.setPosition(
+        		new Vector2f((main.gameMap.position.x -old.x) + p.getPosition().x,
+        					 (main.gameMap.position.y -old.y)  + p.getPosition().y));
+        }
+        main.combatText.add(new ScrollingCombatText("Ready", 1f, main.plane.position.copy(), ("Ready for take-off!"), Color.green, main.ttfTiny, true));
+        zoomScale = 5f;
+	}
+
+
+	@Override
+	public void init(Main main, GameContainer gc) throws SlickException {
+		this.main = main;
+		this.gc = gc;
+		menu = new Menu(Constants.WINDOW_WIDTH/2-100, Constants.WINDOW_HEIGHT/2-100, main, options.length-1, this, options);
+		
+		main.gameMap = new GameMap("Map", 2f, new Vector2f(Constants.WINDOW_WIDTH/2 - 400,0), 0);
+		main.plane = new Plane("Player", 0.4f, new Vector2f(Constants.WINDOW_WIDTH/2 - main.planeImage.getWidth()/2*0.4f, Constants.WINDOW_HEIGHT/2-main.planeImage.getHeight()/2*0.4f), 0);
+		main.plane.setPlayer(true);
+		main.carrier = new Carrier("Carrier", 0.4f, new Vector2f(main.plane.position.x-16, main.plane.position.y-230), 0);
+		main.enemyShip =  new EnemyShip("EnemyShip", 0.4f, new Vector2f((Constants.WINDOW_WIDTH/2 - 400) + Constants.ENEMY_SHIP_XY[0], Constants.ENEMY_SHIP_XY[1]) ,0);
+		main.secretBase = new SecretBase("SecretBase", 1.0f, new Vector2f(Constants.SECRET_BASE_XY[0], Constants.SECRET_BASE_XY[1]) ,0);
+		main.myMissileShots = new Projectile[Constants.MISSLES_PER_PLANE];
+        
+		missleCenter = new Vector2f(Constants.WINDOW_WIDTH/2 - main.missleImage.getWidth()*0.075f/2,
+			    Constants.WINDOW_HEIGHT/2 - main.missleImage.getHeight()*0.075f/2);
+        for (int i=0; i < main.myMissileShots.length; i++) {
+        	 main.myMissileShots[i] = new Projectile("Missle"+i, 0.075f, missleCenter, 0, main.missleImage, Projectile.MY_MISSLE);
+        	 main.myMissileShots[i].speed = Constants.MISSLE_SPEED;
+        }
+        
+		main.myCannonShots = new Projectile[Constants.CANNON_ROUNDS];
+        bulletCenter = new Vector2f(Constants.WINDOW_WIDTH/2 - main.cannonBulletImage.getWidth()*0.4f/2,
+        		Constants.WINDOW_HEIGHT/2 - main.cannonBulletImage.getHeight()*0.4f/2);
+        for (int i=0; i < main.myCannonShots.length; i++) {
+        	main.myCannonShots[i] = new Projectile("Bullet"+i, 0.4f, bulletCenter, 0, main.cannonBulletImage, Projectile.MY_BULLET);
+        	main.myCannonShots[i].speed = Constants.MISSLE_SPEED;
+        }
+		
+        for (int i =0 ; i < main.factories.length; i++){
+        	Vector2f v = new Vector2f(Constants.FACTORY_X[i], Constants.FACTORY_Y[i]);
+        	Factory f = new Factory("Factory"+i, 0.5f, v, 0);
+        	main.factories[i] = f;
+        }
+        
+        for (int i =0 ; i < main.AAGuns.length; i++){
+        	Vector2f v = new Vector2f(Constants.AAGUN_X[i], Constants.AAGUN_Y[i]);
+        	AAGun a = new AAGun("AAGun"+i, 1.0f, v, (float)main.random.nextInt(360));
+        	main.AAGuns[i] = a;
+        }
+        
+        main.enemyPlanes[0] = new EnemyFighter("EnemyFighter0", 0.25f, 
+        	new Vector2f((Constants.WINDOW_WIDTH/2 - 400) + Constants.FIGHTER_X[0], Constants.FIGHTER_Y[0]), 270);
+        main.enemyPlanes[1] = new EnemyFighter("EnemyFighter1", 0.25f, 
+        	new Vector2f((Constants.WINDOW_WIDTH/2 - 400) + Constants.FIGHTER_X[1], Constants.FIGHTER_Y[1]), 270);
+
+        main.enemyPlanes[2] = new EnemyBomber("EnemyBomber0", 0.4f, 
+        	new Vector2f((Constants.WINDOW_WIDTH/2 - 400) + Constants.BOMBER_X[0], Constants.BOMBER_Y[0]), 270);
+        main.enemyPlanes[3] = new EnemyBomber("EnemyBomber1", 0.4f, 
+        	new Vector2f((Constants.WINDOW_WIDTH/2 - 400) + Constants.BOMBER_X[1], Constants.BOMBER_Y[1]), 270);
+        
+        main.projectiles.clear();
+        main.combatText.clear();
+   		main.statistics.resetScores();
+   		
+		main.combatText.add(new ScrollingCombatText("Start", 1f, main.plane.position.copy(), ("Good luck!"), Color.green, main.ttfTiny, true));
+		main.startFade(false, this);
+		
+		zoomScale = 5f;
+	}
+
+
+	@Override
+	public void render(GameContainer gc, Graphics gr) throws SlickException {
+		if (zoomScale > 1f) {
+			gr.scale(zoomScale, zoomScale);
+			gr.translate(-(Constants.WINDOW_WIDTH/2f) + (Constants.WINDOW_WIDTH/2f)/zoomScale,-(Constants.WINDOW_HEIGHT/2f) + (Constants.WINDOW_HEIGHT/2f)/zoomScale);
+		} else {
+			gr.scale(1f, 1f);	
+		}
+		
+		main.gameMap.render(gc, gr);
+		main.carrier.render(gc, gr);
+
+		if (main.plane.isLanded || main.plane.isCrashed) main.plane.render(gc, gr); // If landed or crashed render below enemies
+		renderEnemies(gc, gr);
+		if (!main.plane.isLanded) main.plane.render(gc, gr);
+
+		main.drawer.renderWeaponStatus(main, gr);
+		if (showMenu) menuRender(gc, gr);
+	}
+
+	@Override
+	public void update(GameContainer gc, int delta) throws SlickException {
+		if (showMenu) {
+			menuUpdate();
+			return;
+		}
+		
+		if (zoomScale > 1f) zoomScale = zoomScale - 0.0025f*delta;
+		
+		checkIfMenuRequested();
+        checkGameLogic(gc, delta);
+        
+		main.plane.update(gc, delta);
+		main.gameMap.update(gc, delta);
+		main.carrier.update(gc, delta);
+		updateEnemies(gc, delta);
+		updateProjectiles(gc, delta);
+		updateCombatText(gc, delta);
+		updateSounds();
+	}
+
+	private void renderEnemies(GameContainer gc, Graphics gr) {
+		
+		main.enemyShip.render(gc, gr);
+		main.secretBase.render(gc, gr);
+		
+		for (Factory f: main.factories) {
+			f.render(gc, gr);
+		}
+
+		for (AAGun a: main.AAGuns){
+        	a.render(gc, gr);
+        }
+
+		for (EnemyPlane a: main.enemyPlanes){
+        	a.render(gc, gr);
+        }		
+
+        for (Projectile p: main.projectiles){
+        	p.render(gc, gr);
+        }		
+	}
+	
+	private void updateEnemies(GameContainer gc2, int delta) {
+		main.enemyShip.update(gc, delta);
+		main.secretBase.update(gc, delta);
+
+		for (Factory f: main.factories) {
+			f.update(gc, delta);
+		}
+		
+        for (AAGun a: main.AAGuns){
+        	a.update(gc, delta);
+        }
+        
+        for (EnemyPlane a: main.enemyPlanes){
+        	a.update(gc, delta);
+        }
+        main.missleImpact.update(delta);
+	}
+
+	public void updateCombatText(GameContainer gc2, int delta) {
+    	for(ScrollingCombatText scr: main.combatText){
+    		scr.update(gc, delta);
+    	}
+		main.combatText.removeAll(main.removeCombatTextList);	
+		main.removeCombatTextList.clear();
+	}
+	
+	public void updateProjectiles(GameContainer gc2, int delta) {
+        for (Projectile p: main.projectiles){
+        	p.update(gc, delta);
+        }
+		main.projectiles.removeAll(main.removeProjectileList);	
+		main.removeProjectileList.clear();
+	}
+
+	private void menuRender(GameContainer gc2, Graphics gr) {
+		gr.setColor(trans);
+		gr.fillRect(0, 0, Constants.WINDOW_WIDTH, Constants.WINDOW_HEIGHT);
+		menu.render();
+	}
+	
+	private void menuUpdate() {
+		menu.update();
+		if (state == STATE_GAME && optionSelected){
+			switch (selectedIndex) {
+			case 0:
+				optionSelected = false;
+				menu.selectionMade = false;
+				try {
+					if (!(gc instanceof AppletGameContainer.Container)) main.doFullScreenToggle(gc);
+				} catch (SlickException e) {
+					Log.error("Fullscreen toggle error", e);
+					e.printStackTrace();
+				}
+				break;
+			case 1:
+				main.input.clearKeyPressedRecord();
+				optionSelected = false;
+				menu.selectionMade = false;
+				state = STATE_FADE_OUT;
+				main.startFade(true, this);
+				break;
+			case 2:
+				gc.exit();
+				break;
+			case 3:
+				showMenu = false;
+				optionSelected = false;
+				menu.selectionMade = false;
+				main.input.clearKeyPressedRecord();
+				break;				
+			}
+		}
+	}
+
+	@Override
+	public void fadeCompleted() {
+		if (state == STATE_FADE_IN) {
+			state = STATE_GAME;
+		} else if (state == STATE_FADE_OUT) {
+			main.stopAllSounds();
+			main.requestMode(Modes.MAINMENU, gc);
+		}
+	}
+	
+	private void checkIfMenuRequested() {
+		
+		if(!main.plane.isPlayer() && main.input.isKeyPressed(Input.KEY_ESCAPE)){
+			main.input.clearKeyPressedRecord();
+			optionSelected = false;
+			menu.selectionMade = false;
+			state = STATE_FADE_OUT;
+			main.startFade(true, this);
+			return;
+		}
+		
+		if (!showMenu && main.input.isKeyPressed(Input.KEY_ESCAPE)) {
+			showMenu = true;
+			main.input.clearKeyPressedRecord();
+		}
+	}
+
+	@Override
+	public void selectionChanged(int selectedIndex) {
+		
+	}
+
+	@Override
+	public void optionSelected(int selectedIndex) {
+		this.optionSelected = true;
+		this.selectedIndex = selectedIndex;
+		main.menuSound.play();
+	}
+	
+	
+	public int getRemainingFactories() {
+		int number = 0;
+		for (Factory f: main.factories){
+			if (!f.isDestroyed) number++;
+		}
+		return number;
+	}
+	
+	private void updateSounds() {
+    	if (main.plane.isLanded || main.plane.isCrashed) {
+    		if (!main.oceanSound.playing()) main.oceanSound.loop(1.0f,0.3f);
+    		return;
+    	} else {
+    		main.oceanSound.stop();
+    	}
+    	
+    	if (main.input.isKeyDown(Input.KEY_UP) && main.gameMap.speed >= Constants.MIN_PLANE_SPEED && main.gameMap.speed < Constants.MAX_PLANE_SPEED - main.plane.dmg){
+    		if (!main.afterBurnerSpeedEffect.playing()) {
+    			main.afterBurnerSpeedEffect.play(1.0f, 0.5f);
+    		}
+    	}
+    	if (!main.cruiseSpeedEffect.playing()) main.cruiseSpeedEffect.loop();
+	}	
+}

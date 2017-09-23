@@ -1,0 +1,81 @@
+10
+
+dir
+32
+file://d:/Archives/Development/Repository/NewRaid/src/ca/iantria/raid
+file://d:/Archives/Development/Repository
+
+
+
+2013-02-21T23:34:38.893000Z
+32
+anthony
+
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+b387ac3b-0e69-094d-bf54-bdd40c49b313
+
+
+
+
+
+
+0
+
+Main.java
+file
+41
+
+
+
+2013-03-17T14:03:09.274000Z
+06d2da7f2d3b418ad4f765b2eeac6967
+2013-03-17T15:00:52.194000Z
+41
+anthony
+has-props
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+19806
+
+entity
+dir
+
+interfaces
+dir
+
+modes
+dir
+
+util
+dir
+
